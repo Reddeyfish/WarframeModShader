@@ -1,8 +1,4 @@
-﻿// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
-
-// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
-
-Shader "BetterDiffuse" 
+﻿Shader "Custom/TransparentShadows" 
 {
     Properties 
     {
@@ -11,12 +7,15 @@ Shader "BetterDiffuse"
     SubShader 
     {
     
-        Tags {"RenderType" = "Transparent"}
+        Tags {"RenderType" = "Transparent" "Queue"="AlphaTest"} //In Alphatest Queue becuase it is rendered after Opaque objects and isn't the Transparent or Overlay queue. (Shadows with those tags are disabled as per https://forum.unity3d.com/threads/no-shadows-visible-on-transparency-shaders.9909/)
+        // (You can change the queue to be the same as transparent by fiddling with settings on the Renderer, which will override the shader settings here)
+        ZWrite Off
+        ZTest On
         Pass 
         {
             Tags {"LightMode" = "ForwardBase"}                      // This Pass tag is important or Unity may not give it the correct light information.
 
-            Blend SrcAlpha OneMinusSrcAlpha
+            Blend One OneMinusSrcAlpha
 
            		CGPROGRAM
                 #pragma multi_compile_fwdbase
@@ -38,8 +37,6 @@ Shader "BetterDiffuse"
                 {
  
                     float4 pos : SV_POSITION;
- 
-                    float3 vlight : COLOR;
  
                     float3 lightDir : TEXCOORD1;
  
@@ -69,37 +66,9 @@ Shader "BetterDiffuse"
  
                    
  
-                    // Calc spherical harmonics and vertex lights. Ripped from compiled surface shader.
- 
                     float3 worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
  
                     float3 worldNormal = mul((float3x3)unity_ObjectToWorld, SCALED_NORMAL);
- 
-                    o.vlight = float3(0, 0, 0);
- 
-                    #ifdef LIGHTMAP_OFF
- 
-                        float3 shlight = ShadeSH9(float4(worldNormal, 1.0));
- 
-                        o.vlight = shlight;
- 
-                        #ifdef VERTEXLIGHT_ON
- 
-                            o.vlight += Shade4PointLights (
- 
-                                unity_4LightPosX0, unity_4LightPosY0, unity_4LightPosZ0,
- 
-                                unity_LightColor[0].rgb, unity_LightColor[1].rgb, unity_LightColor[2].rgb, unity_LightColor[3].rgb,
- 
-                                unity_4LightAtten0, worldPos, worldNormal
- 
-                                );
- 
-                        #endif // VERTEXLIGHT_ON
- 
-                    #endif // LIGHTMAP_OFF
- 
-               
  
                     TRANSFER_VERTEX_TO_FRAGMENT(o);
  
@@ -131,11 +100,9 @@ Shader "BetterDiffuse"
  
                     color = UNITY_LIGHTMODEL_AMBIENT.rgb;
  
-                    color += IN.vlight;
- 
                     color += _LightColor0.rgb * NdotL * ( atten * 2);
  
-                    return half4(color * _ColorMul.rgb, _ColorMul.a);
+                    return half4(color * _ColorMul.rgb * _ColorMul.a, _ColorMul.a);
  
                 }
  
@@ -146,7 +113,7 @@ Shader "BetterDiffuse"
         Pass {
             Tags {"LightMode" = "ForwardAdd"}                       // Again, this pass tag is important otherwise Unity may not give the correct light information.
             
-            Blend One OneMinusSrcAlpha                                           // Additively blend this pass with the previous one(s). This pass gets run once per pixel light.
+            Blend One One                                           // Additively blend this pass with the previous one(s). This pass gets run once per pixel light.
             ZWrite Off
             ZTest On
             CGPROGRAM
@@ -195,21 +162,8 @@ Shader "BetterDiffuse"
                     
                     
                     fixed4 c;
-                    c.rgb = (_LightColor0.rgb * diff) * (atten * 2)  * _ColorMul.rgb; // Diffuse
+                    c.rgb = (_LightColor0.rgb * diff) * (atten * 2)  * _ColorMul.rgb * _ColorMul.a; // Diffuse
                     c.a = _ColorMul.a;
-                    
-                    fixed shadowAtten = SHADOW_ATTENUATION(i);
-                    //c.rgb *= shadowAtten;
-
-                    //c.a = 1 - shadowAtten;
-
-                    //return _LightColor0 * _ColorMul * shadowAtten;
-
-                    /*
-                    #if defined (SHADOWS_SCREEN)
-                        return fixed4(shadowAtten, shadowAtten, shadowAtten, 1);
-                    #endif
-                    */
 
                     return c;
                 }
