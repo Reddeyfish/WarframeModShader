@@ -9,7 +9,7 @@
     SubShader 
     {
         
-        Tags {"RenderType" = "Opaque" "Queue"="Geometry" "IgnoreProjector" = "true"} 
+        Tags {"RenderType" = "Opaque" "Queue"="Geometry"} 
         ZWrite On
         ZTest On
         
@@ -19,7 +19,8 @@
             Cull Back 
             Blend One Zero  
             CGPROGRAM
-                #pragma multi_compile_fwdbase
+                #pragma multi_compile_fwdbase_fullshadows
+
                 #pragma vertex vert
                 #pragma fragment basePassFragment
                 #pragma fragmentoption ARB_precision_hint_fastest
@@ -33,11 +34,12 @@
                 struct BasePassV2FInput
                 {
                     float4 pos : SV_POSITION;
-                    float3 lightDir : TEXCOORD0;
-                    float3 vNormal : TEXCOORD1;
-                    float3 viewDir : TEXCOORD2;
+                    float3 worldPos : TEXCOORD0;
+                    float3 lightDir : TEXCOORD1;
+                    float3 vNormal : TEXCOORD2;
+                    float3 viewDir : TEXCOORD3;
 
-                    LIGHTING_COORDS(3,4)
+                    LIGHTING_COORDS(4,5)
                 };
 
                 float4 _LightColor0; // Contains the light color for this pass.
@@ -48,12 +50,12 @@
                 {
                     BasePassV2FInput o;
                     o.pos = UnityObjectToClipPos(v.vertex);
- 
+                    o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                     // Calc normal and light dir.
-                    o.lightDir = WorldSpaceLightDir(v.vertex);
-                    o.viewDir = WorldSpaceViewDir(v.vertex);
+                    o.lightDir = UnityWorldSpaceLightDir(o.worldPos);
+                    o.vNormal = UnityObjectToWorldNormal(v.normal.xyz); 
+                    o.viewDir = UnityWorldSpaceViewDir(o.worldPos);
                     TRANSFER_VERTEX_TO_FRAGMENT(o);
-                    o.vNormal = UnityObjectToWorldNormal(v.normal.xyz);
                     return o;
                 }
 
@@ -63,15 +65,17 @@
                     IN.vNormal = normalize (IN.vNormal);
                     IN.viewDir = normalize(IN.viewDir);
  
-                    float atten = LIGHT_ATTENUATION(IN);
-                    float nDotL = abs(dot (IN.vNormal, IN.lightDir));
-                    float3 reflection = reflect(IN.viewDir, IN.vNormal); //if you want to use a cubemap for reflections, use this vector to sample from it.
-                    float rDotL = abs(dot(reflection, IN.lightDir));
+                    UNITY_LIGHT_ATTENUATION(atten, IN, IN.worldPos);
+                    //fixed atten = LIGHT_ATTENUATION(IN);
+                    float nDotL = dot (IN.vNormal, IN.lightDir);
+                    nDotL = max(0, nDotL);
+                    float3 reflection = reflect(-IN.viewDir, IN.vNormal); //if you want to use a cubemap for reflections, use this vector to sample from it.
+                    float rDotL = saturate(dot(reflection, IN.lightDir));
  
                     float specular = max(0, pow(rDotL, _SpecExpo)); //computation different from, but gives identical results to, the Phong shading model
                     float ambient = UNITY_LIGHTMODEL_AMBIENT.rgb * _DiffColor.rgb;
                     float3 diffuse = _DiffColor.rgb * nDotL;
-                    float3 lighting = diffuse + float3(specular, specular, specular);
+                    float3 lighting = diffuse + specular.xxx;
 
 
                     lighting *= _LightColor0 * atten;
@@ -86,7 +90,7 @@
             Cull Back 
             Blend One One //ForwardAdd is intended to be additively lit
             CGPROGRAM
-                #pragma multi_compile_fwdbase
+                #pragma multi_compile_fwdadd_fullshadows
                 #pragma vertex vert
                 #pragma fragment frag
                 #pragma fragmentoption ARB_precision_hint_fastest
@@ -96,11 +100,12 @@
                 struct AddPassV2FInput
                 {
                     float4 pos : SV_POSITION;
-                    float3 lightDir : TEXCOORD0;
-                    float3 vNormal : TEXCOORD1;
-                    float3 viewDir : TEXCOORD2;
+                    float3 worldPos : TEXCOORD0;
+                    float3 lightDir : TEXCOORD1;
+                    float3 vNormal : TEXCOORD2;
+                    float3 viewDir : TEXCOORD3;
 
-                    LIGHTING_COORDS(3,4)
+                    LIGHTING_COORDS(4,5)
                 };
 
                 float4 _LightColor0; // Contains the light color for this pass.
@@ -111,12 +116,12 @@
                 {
                     AddPassV2FInput o;
                     o.pos = UnityObjectToClipPos(v.vertex);
- 
+                    o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
                     // Calc normal and light dir.
-                    o.lightDir = WorldSpaceLightDir(v.vertex);
-                    o.viewDir = WorldSpaceViewDir(v.vertex);
-                    TRANSFER_VERTEX_TO_FRAGMENT(o);
+                    o.lightDir = UnityWorldSpaceLightDir(o.worldPos);
                     o.vNormal = UnityObjectToWorldNormal(v.normal.xyz); 
+                    o.viewDir = UnityWorldSpaceViewDir(o.worldPos);
+                    TRANSFER_VERTEX_TO_FRAGMENT(o);
                     return o;
                 }
 
@@ -126,15 +131,17 @@
                     IN.lightDir = normalize (IN.lightDir);
                     IN.vNormal = normalize (IN.vNormal);
                     IN.viewDir = normalize(IN.viewDir);
- 
-                    float atten = LIGHT_ATTENUATION(IN);
-                    float nDotL = abs(dot (IN.vNormal, IN.lightDir));
-                    float3 reflection = reflect(IN.viewDir, IN.vNormal);
-                    float rDotL = abs(dot(reflection, IN.lightDir));
+
+                    UNITY_LIGHT_ATTENUATION(atten, IN, IN.worldPos);
+                    //fixed atten = LIGHT_ATTENUATION(IN);
+                    float nDotL = dot (IN.vNormal, IN.lightDir);
+                    nDotL = max(0, nDotL);
+                    float3 reflection = reflect(-IN.viewDir, IN.vNormal);
+                    float rDotL = saturate(dot(reflection, IN.lightDir));
 
                     float specular = max(0, pow(rDotL, _SpecExpo));
                     float3 diffuse = _DiffColor.rgb * nDotL; 
-                    float3 lighting = diffuse + float3(specular, specular, specular);
+                    float3 lighting = diffuse + specular.xxx;
                     lighting *= _LightColor0 * atten;
                     //no ambient
                     float3 color = lighting;
