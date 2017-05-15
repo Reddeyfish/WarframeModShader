@@ -7,6 +7,9 @@ Shader "Custom/LightWrapping" {
         _DiffColor ("Main Color", Color) = (1,1,1,1)
 		_SpecExpo ("Specular Exponent", Float) = 50
         _LightWrapping ("Light Wrapping", Range(0, 1)) = 0.25
+        _Gradient("Gradient", 2D) = "white" {}
+        _OpacityExponent("Opacity Distance Exponent", Float) = 100
+        _ScatterOffset ("Scattering Interpolation. 0 for frontscatter, 1 for backscatter", Range(0, 1)) = 0.5
     }
 
     CGINCLUDE
@@ -266,6 +269,9 @@ Shader "Custom/LightWrapping" {
                 half4 _DiffColor; //diffuse color.
                 float _SpecExpo; //specular exponent in Phong shading model
                 float _LightWrapping;
+                sampler2D _Gradient;
+                float _OpacityExponent;
+                float _ScatterOffset;
 
                 BasePassV2FInput vert(appdata_full v)
                 {
@@ -297,7 +303,7 @@ Shader "Custom/LightWrapping" {
                     float specular = max(0, pow(rDotL, _SpecExpo)); //computation different from, but gives identical results to, the Phong shading model
                     float ambient = UNITY_LIGHTMODEL_AMBIENT.rgb * _DiffColor.rgb;
                     float3 diffuse = _DiffColor.rgb * nDotL;
-                    float3 lighting = diffuse + specular.xxx;
+                    float3 lighting = (diffuse * (1 - _ScatterOffset)) + specular.xxx;
 
                     lighting *= _LightColor0 * atten;
                     float3 color = lighting + ambient;
@@ -310,8 +316,7 @@ Shader "Custom/LightWrapping" {
         Pass {
             Tags {"LightMode" = "ForwardAdd"}                       
             Cull Back 
-            //Blend One One //ForwardAdd is intended to be additively lit
-            Blend One Zero
+            Blend One One //ForwardAdd is intended to be additively lit
             CGPROGRAM
                 #pragma multi_compile_fwdadd_fullshadows
                 #pragma vertex vert
@@ -324,6 +329,9 @@ Shader "Custom/LightWrapping" {
                 half4 _DiffColor; //diffuse color.
                 float _SpecExpo; //specular exponent in Phong shading model
                 float _LightWrapping;
+                sampler2D _Gradient;
+                float _OpacityExponent;
+                float _ScatterOffset;
 
                 BasePassV2FInput vert(appdata_full v) 
                 {
@@ -354,19 +362,19 @@ Shader "Custom/LightWrapping" {
                     rDotL = saturate(rDotL);
                     float specular = max(0, pow(rDotL, _SpecExpo));
                     float3 diffuse = _DiffColor.rgb * nDotL; 
-                    float3 lighting = diffuse + specular.xxx;
+                    float3 lighting = (diffuse * (1 - _ScatterOffset)) + specular.xxx;
                     lighting *= _LightColor0 * atten;
                     //no ambient
                     float3 color = lighting;
                     #if defined (SHADOWS_CUBE)
-                    	//float shadow = CustomSampleShadowDepth(IN._ShadowCoord );
-                    	//return shadow.xxxx;
-                    	//float len = length(IN._ShadowCoord) * _LightPositionRange.w;
-                    	float len = SampleCubeDistance (IN._ShadowCoord);
-                    	float mydist = length(IN._ShadowCoord) * _LightPositionRange.w;
-			    		mydist *= 0.97; // bias
 
-                    	return 100 * (mydist - len);//abs(1.0 / (pow((1.0 + len), 1.0)));
+                    	float entryDist = SampleCubeDistance (IN._ShadowCoord);
+                    	float exitDist = length(IN._ShadowCoord) * _LightPositionRange.w;
+			    		//exitDist *= 0.97; // bias
+
+			    		float depthExp = saturate(exp((entryDist - exitDist) * _OpacityExponent));
+			    		color += tex2D(_Gradient, float2(depthExp - 0.01, 0.5)) * _ScatterOffset;
+
                     #endif
                     return float4(color, 1);
                 }
