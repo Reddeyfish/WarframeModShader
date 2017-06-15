@@ -22,6 +22,9 @@ public class MeshGeneration : MonoBehaviour {
 
     [SerializeField]
     protected string outputFileName = "generatedMesh.obj";
+
+    [SerializeField]
+    protected bool doubleSidedTriangles = false;
     
 
     public void GenerateMesh() {
@@ -64,6 +67,34 @@ public class MeshGeneration : MonoBehaviour {
         mesh.RecalculateBounds();
         mesh.RecalculateNormals();
         mesh.RecalculateTangents();
+
+        if (doubleSidedTriangles) {
+            triangles = new int[numVertices * 12];
+
+            for (int i = 0; i < numVertices; i++) {
+                //same triangles as original
+                triangles[12 * i + 0] = (2 * i) + 0;
+                triangles[12 * i + 1] = (2 * i) + 1;
+                triangles[12 * i + 2] = (2 * ((i + 1) % numVertices)) + 1;
+
+                triangles[12 * i + 3] = (2 * ((i + 1) % numVertices)) + 0;
+                triangles[12 * i + 4] = (2 * i) + 0;
+                triangles[12 * i + 5] = (2 * ((i + 1) % numVertices)) + 1;
+
+                //duplicated triangles from above, but with reversed orientation
+
+                triangles[12 * i + 6] = (2 * i) + 1;
+                triangles[12 * i + 7] = (2 * i) + 0;
+                triangles[12 * i + 8] = (2 * ((i + 1) % numVertices)) + 1;
+
+                triangles[12 * i + 9] = (2 * ((i + 1) % numVertices)) + 0;
+                triangles[12 * i + 10] = (2 * ((i + 1) % numVertices)) + 1;
+                triangles[12 * i + 11] = (2 * i) + 0;
+            }
+
+            mesh.triangles = triangles;
+        }
+        
 
         filter.mesh = mesh;
 
